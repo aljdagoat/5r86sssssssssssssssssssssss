@@ -1,1182 +1,832 @@
 -- ==================================================================================================================
---                                                Gemini UI Library (Fixed)
+-- UI Library - Based on Target Indicator GUI Style
+-- Provides tabs, color pickers, key selectors, text boxes, dropdowns, and more
 -- ==================================================================================================================
 
-local GeminiUI = {}
-local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
-local CoreGui = game:GetService("CoreGui")
-local TweenService = game:GetService("TweenService")
-local RunService = game:GetService("RunService")
+local library = {}
+library.font = Enum.Font.Arcade
+local guiAccentColor = Color3.fromRGB(100, 100, 255)
 
--- Configuration
-GeminiUI.config = {
-    font = Enum.Font.Gotham or Enum.Font.SourceSans,
-    accentColor = Color3.fromRGB(100, 100, 255),
-    backgroundColor = Color3.fromRGB(26, 26, 26),
-    borderColor = Color3.fromRGB(57, 57, 57),
-    secondaryColor = Color3.fromRGB(40, 40, 40),
-    textColor = Color3.fromRGB(250, 250, 250)
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+local themes = {
+    preset = {
+        accent = guiAccentColor
+    }
 }
 
--- Private Helper Functions
-local function create(class, properties)
+-- Utility Functions
+function library:create(class, properties)
     local inst = Instance.new(class)
-    for prop, value in pairs(properties or {}) do
-        pcall(function()
-            inst[prop] = value
-        end)
+    for prop, value in pairs(properties) do
+        inst[prop] = value
     end
     return inst
 end
 
-local function applyTheme(instance, color)
-    if instance then
-        instance.BackgroundColor3 = color
-    end
+function library:tween(object, properties, duration, style)
+    duration = duration or 0.25
+    style = style or Enum.EasingStyle.Quad
+    TweenService:Create(object, TweenInfo.new(duration, style), properties):Play()
 end
 
--- Enhanced dragging logic
-local dragging = false
-local dragStartPos = nil
-local originalPosition = nil
-local dragFrame = nil
-
-local function onInputBegan(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 and dragFrame then
-        local mouse = Vector2.new(input.Position.X, input.Position.Y)
-        local guiPosition = dragFrame.AbsolutePosition
-        local guiSize = dragFrame.AbsoluteSize
-        
-        if mouse.X >= guiPosition.X and mouse.X <= guiPosition.X + guiSize.X and
-           mouse.Y >= guiPosition.Y and mouse.Y <= guiPosition.Y + guiSize.Y then
-            
-            dragging = true
-            dragStartPos = mouse
-            originalPosition = dragFrame.Position
-        end
-    end
-end
-
-local function onInputChanged(input)
-    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement and dragFrame then
-        local mouse = Vector2.new(input.Position.X, input.Position.Y)
-        local delta = mouse - dragStartPos
-        local newPosition = UDim2.new(
-            originalPosition.X.Scale, 
-            originalPosition.X.Offset + delta.X,
-            originalPosition.Y.Scale, 
-            originalPosition.Y.Offset + delta.Y
-        )
-        dragFrame.Position = newPosition
-    end
-end
-
-local function onInputEnded(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = false
-    end
-end
-
-UserInputService.InputBegan:Connect(onInputBegan)
-UserInputService.InputChanged:Connect(onInputChanged)
-UserInputService.InputEnded:Connect(onInputEnded)
-
--- Utility function for HSV to RGB conversion
-local function HSVtoRGB(h, s, v)
-    local r, g, b
-    local i = math.floor(h * 6)
-    local f = h * 6 - i
-    local p = v * (1 - s)
-    local q = v * (1 - f * s)
-    local t = v * (1 - (1 - f) * s)
+-- Main Library Functions
+function library:CreateWindow(title)
+    local window = {}
+    window.tabs = {}
+    window.currentTab = nil
     
-    local imod = i % 6
-    if imod == 0 then
-        r, g, b = v, t, p
-    elseif imod == 1 then
-        r, g, b = q, v, p
-    elseif imod == 2 then
-        r, g, b = p, v, t
-    elseif imod == 3 then
-        r, g, b = p, q, v
-    elseif imod == 4 then
-        r, g, b = t, p, v
-    elseif imod == 5 then
-        r, g, b = v, p, q
-    end
-    
-    return Color3.fromRGB(r * 255, g * 255, b * 255)
-end
-
--- ================================== UI ELEMENTS ==================================
-
-function GeminiUI.CreateWindow(title, width, height)
-    title = title or "GeminiUI"
-    width = width or 400
-    height = height or 300
-    
-    -- Cleanup existing GUI
-    if GeminiUI.screenGui then
-        GeminiUI.screenGui:Destroy()
-    end
-    
-    local screenGui = create("ScreenGui", {
-        Parent = CoreGui, 
-        Name = "GeminiUI_" .. tick(),
-        ResetOnSpawn = false,
-        IgnoreGuiInset = true
+    -- Create ScreenGui
+    local screenGui = self:create("ScreenGui", {
+        Parent = game:GetService("CoreGui"),
+        Name = "UILibrary_" .. title,
+        ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     })
     
-    -- Protect GUI if possible (for exploits)
-    if syn and syn.protect_gui then 
-        pcall(function() syn.protect_gui(screenGui) end)
-    elseif getgenv and getgenv().protect_gui then
-        pcall(function() getgenv().protect_gui(screenGui) end)
+    -- Dragging variables
+    local dragging = false
+    local dragStartPos = nil
+    local originalPosition = nil
+    
+    -- Dragging functions
+    local function onInputBegan(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            local mouse = UserInputService:GetMouseLocation()
+            local guiPosition = borderFrame.AbsolutePosition
+            local guiSize = borderFrame.AbsoluteSize
+            
+            if mouse.X >= guiPosition.X and mouse.X <= guiPosition.X + guiSize.X and
+               mouse.Y >= guiPosition.Y and mouse.Y <= guiPosition.Y + guiSize.Y then
+                
+                dragging = true
+                dragStartPos = mouse
+                originalPosition = borderFrame.Position
+            end
+        end
     end
-
-    local borderFrame = create("Frame", {
+    
+    local function onInputChanged(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local mouse = UserInputService:GetMouseLocation()
+            local delta = mouse - dragStartPos
+            local newPosition = UDim2.new(originalPosition.X.Scale, originalPosition.X.Offset + delta.X,
+                                           originalPosition.Y.Scale, originalPosition.Y.Offset + delta.Y)
+            borderFrame.Position = newPosition
+        end
+    end
+    
+    local function onInputEnded(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end
+    
+    UserInputService.InputBegan:Connect(onInputBegan)
+    UserInputService.InputChanged:Connect(onInputChanged)
+    UserInputService.InputEnded:Connect(onInputEnded)
+    
+    -- Border Frame (Draggable)
+    local borderFrame = self:create("Frame", {
         Parent = screenGui,
         Name = "AccentBorder",
-        BackgroundColor3 = GeminiUI.config.accentColor,
+        BackgroundColor3 = themes.preset.accent,
         BorderSizePixel = 0,
-        Position = UDim2.new(0.5, -width/2, 0.5, -height/2),
-        Size = UDim2.new(0, width, 0, height),
+        Position = UDim2.new(0.5, -300, 0.5, -200),
+        Size = UDim2.new(0, 600, 0, 400),
         Active = true,
         Draggable = false
     })
     
-    -- Glow effect (simplified)
-    local outerGlow = create("Frame", {
+    local outerGlow = self:create("ImageLabel", {
         Parent = borderFrame,
+        ImageColor3 = themes.preset.accent,
+        ScaleType = Enum.ScaleType.Slice,
+        ImageTransparency = 0.9,
+        BorderColor3 = Color3.new(0, 0, 0),
+        BackgroundColor3 = Color3.fromRGB(255,255,255),
+        Image = "http://www.roblox.com/asset/?id=18245826428",
         BackgroundTransparency = 1,
-        Position = UDim2.new(0, -10, 0, -10),
-        Size = UDim2.new(1, 20, 1, 20),
-        ZIndex = 0
+        Position = UDim2.new(0, -20, 0, -20),
+        Size = UDim2.new(1, 40, 1, 40),
+        ZIndex = 5,
+        BorderSizePixel = 0,
+        SliceCenter = Rect.new(Vector2.new(21, 21), Vector2.new(79, 79))
     })
     
-    create("UIStroke", {
-        Parent = outerGlow,
-        Color = GeminiUI.config.accentColor,
-        Thickness = 2,
-        Transparency = 0.8
-    })
-
-    local innerFrame = create("Frame", {
+    -- Main GUI Stack & Title
+    local indicatorInline1 = self:create("Frame", {
         Parent = borderFrame,
-        BackgroundColor3 = GeminiUI.config.secondaryColor,
+        BorderColor3 = Color3.new(0, 0, 0),
         Position = UDim2.new(0, 2, 0, 2),
         Size = UDim2.new(1, -4, 1, -4),
-        BorderSizePixel = 0,
-        ZIndex = 1
+        BackgroundColor3 = Color3.fromRGB(40, 40, 40)
     })
     
-    local titleLabel = create("TextLabel", {
-        Parent = innerFrame,
-        Font = GeminiUI.config.font,
-        TextColor3 = GeminiUI.config.textColor,
+    local titleHeight = 25
+    local indicatorLabel = self:create("TextLabel", {
+        Parent = indicatorInline1,
+        Font = self.font,
+        TextColor3 = Color3.fromRGB(250, 250, 250),
         Text = title,
-        TextStrokeTransparency = 0.8,
-        Size = UDim2.new(1, -8, 0, 24),
-        Position = UDim2.new(0, 4, 0, 2),
+        TextStrokeTransparency = 0.5,
+        Size = UDim2.new(1, -8, 0, titleHeight),
+        Position = UDim2.new(0, 4, 0, 0),
         BackgroundTransparency = 1,
         TextXAlignment = Enum.TextXAlignment.Left,
-        TextSize = 14,
-        ZIndex = 2
+        TextSize = 14
     })
     
-    -- Close button
-    local closeButton = create("TextButton", {
-        Parent = titleLabel,
-        Text = "×",
-        Font = GeminiUI.config.font,
-        TextColor3 = Color3.fromRGB(255, 100, 100),
-        TextSize = 18,
-        Size = UDim2.new(0, 20, 0, 20),
-        Position = UDim2.new(1, -22, 0, 2),
+    -- Tab Container
+    local tabContainer = self:create("Frame", {
+        Parent = indicatorInline1,
         BackgroundTransparency = 1,
-        ZIndex = 3
+        Position = UDim2.new(0, 0, 0, titleHeight),
+        Size = UDim2.new(1, 0, 0, 30)
     })
     
-    closeButton.MouseButton1Click:Connect(function()
-        screenGui:Destroy()
-    end)
-    
-    local mainFrame = create("Frame", {
-        Parent = innerFrame,
-        BackgroundColor3 = GeminiUI.config.backgroundColor,
-        Position = UDim2.new(0, 2, 0, 26),
-        Size = UDim2.new(1, -4, 1, -28),
+    -- Content Area
+    local indicatorInline2 = self:create("Frame", {
+        Parent = indicatorInline1,
+        BorderColor3 = Color3.new(0, 0, 0),
+        Position = UDim2.new(0, 2, 0, titleHeight + 30),
+        Size = UDim2.new(1, -4, 1, -(titleHeight + 30)),
         BorderSizePixel = 0,
-        ZIndex = 1
-    })
-
-    -- Initialize UI elements
-    GeminiUI.screenGui = screenGui
-    GeminiUI.mainFrame = borderFrame
-    GeminiUI.contentFrame = mainFrame
-    dragFrame = borderFrame
-    
-    GeminiUI.tabsContainer = create("Frame", {
-        Parent = mainFrame,
-        Name = "TabsContainer",
-        Size = UDim2.new(1, 0, 0, 25),
-        BackgroundTransparency = 1,
-        ZIndex = 2
-    })
-
-    local uiListLayout = create("UIListLayout", {
-        Parent = GeminiUI.tabsContainer,
-        FillDirection = Enum.FillDirection.Horizontal,
-        HorizontalAlignment = Enum.HorizontalAlignment.Left,
-        Padding = UDim.new(0, 2),
-        SortOrder = Enum.SortOrder.LayoutOrder
-    })
-
-    GeminiUI.tabContents = create("Frame", {
-        Parent = mainFrame,
-        Name = "TabContents",
-        Position = UDim2.new(0, 0, 0, 30),
-        Size = UDim2.new(1, 0, 1, -30),
-        BackgroundTransparency = 1,
-        ZIndex = 1
-    })
-
-    GeminiUI.tabs = {}
-    GeminiUI.activeTab = nil
-
-    return GeminiUI
-end
-
-function GeminiUI.AddTab(name)
-    if not GeminiUI.tabsContainer then
-        error("Must create window before adding tabs")
-    end
-    
-    name = name or "Tab"
-    
-    local tabFrame = create("Frame", {
-        Parent = GeminiUI.tabsContainer,
-        Name = name .. "Tab",
-        BackgroundColor3 = GeminiUI.config.secondaryColor,
-        BorderSizePixel = 1,
-        BorderColor3 = GeminiUI.config.borderColor,
-        Size = UDim2.new(0, 100, 1, 0),
-        ZIndex = 2
+        BackgroundColor3 = Color3.fromRGB(26, 26, 26)
     })
     
-    local tabButton = create("TextButton", {
-        Parent = tabFrame,
-        Text = name,
-        Font = GeminiUI.config.font,
-        TextColor3 = Color3.fromRGB(200, 200, 200),
-        TextSize = 12,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 1, 0),
-        ZIndex = 3
+    local indicatorMain = self:create("Frame", {
+        Parent = indicatorInline2,
+        Position = UDim2.new(0, 2, 0, 2),
+        BorderColor3 = Color3.fromRGB(57, 57, 57),
+        Size = UDim2.new(1, -4, 1, -4),
+        BackgroundColor3 = Color3.fromRGB(26, 26, 26)
     })
-
-    local tabContentFrame = create("ScrollingFrame", {
-        Parent = GeminiUI.tabContents,
-        Name = name .. "Content",
-        Size = UDim2.new(1, 0, 1, 0),
-        BackgroundTransparency = 1,
-        Visible = false,
-        ScrollBarThickness = 4,
-        ScrollBarImageColor3 = GeminiUI.config.accentColor,
+    
+    local indicatorTabInline = self:create("Frame", {
+        Parent = indicatorMain,
+        Position = UDim2.new(0, 4, 0, 4),
+        BorderColor3 = Color3.fromRGB(19, 19, 19),
+        Size = UDim2.new(1, -8, 1, -8),
         BorderSizePixel = 0,
-        CanvasSize = UDim2.new(0, 0, 0, 0),
-        AutomaticCanvasSize = Enum.AutomaticSize.Y,
-        ZIndex = 1
-    })
-
-    local contentLayout = create("UIListLayout", {
-        Parent = tabContentFrame,
-        FillDirection = Enum.FillDirection.Vertical,
-        Padding = UDim.new(0, 5),
-        HorizontalAlignment = Enum.HorizontalAlignment.Center
+        BackgroundColor3 = Color3.fromRGB(19, 19, 19)
     })
     
-    -- Add padding to content
-    create("UIPadding", {
-        Parent = tabContentFrame,
-        PaddingTop = UDim.new(0, 10),
-        PaddingLeft = UDim.new(0, 10),
-        PaddingRight = UDim.new(0, 10),
-        PaddingBottom = UDim.new(0, 10)
+    local contentFrame = self:create("Frame", {
+        Parent = indicatorTabInline,
+        Position = UDim2.new(0, 2, 0, 2),
+        BorderColor3 = Color3.fromRGB(56, 56, 56),
+        Size = UDim2.new(1, -4, 1, -4),
+        BackgroundColor3 = Color3.fromRGB(22, 22, 22)
     })
     
-    tabButton.MouseButton1Click:Connect(function()
-        for _, tabData in pairs(GeminiUI.tabs) do
-            tabData.contentFrame.Visible = false
-            tabData.tabFrame.BackgroundColor3 = GeminiUI.config.secondaryColor
-            tabData.tabButton.TextColor3 = Color3.fromRGB(200, 200, 200)
-        end
-        tabContentFrame.Visible = true
-        tabFrame.BackgroundColor3 = GeminiUI.config.accentColor
-        tabButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        GeminiUI.activeTab = name
-    end)
-    
-    local tab = {
-        name = name,
-        tabFrame = tabFrame,
-        tabButton = tabButton,
-        contentFrame = tabContentFrame
-    }
-    table.insert(GeminiUI.tabs, tab)
-    
-    -- Auto-resize tabs
-    GeminiUI.FinalizeTabs()
-    
-    return tab.contentFrame
-end
-
-function GeminiUI.FinalizeTabs()
-    local numTabs = #GeminiUI.tabs
-    if numTabs > 0 then
-        local tabWidth = math.max(80, (GeminiUI.contentFrame.AbsoluteSize.X - 10) / numTabs)
-        for i, tab in pairs(GeminiUI.tabs) do
-            tab.tabFrame.Size = UDim2.new(0, tabWidth, 1, 0)
-            tab.tabFrame.LayoutOrder = i
-        end
-        -- Activate the first tab by default if none is active
-        if not GeminiUI.activeTab then
-            GeminiUI.tabs[1].tabButton.MouseButton1Click:Fire()
-        end
-    end
-end
-
-function GeminiUI.AddLabel(parent, text)
-    text = text or "Label"
-    local label = create("TextLabel", {
-        Parent = parent,
-        Text = text,
-        Font = GeminiUI.config.font,
-        TextColor3 = GeminiUI.config.textColor,
-        TextSize = 12,
-        BackgroundTransparency = 1,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        Size = UDim2.new(1, -20, 0, 25),
-        AutomaticSize = Enum.AutomaticSize.Y,
-        TextWrapped = true,
-        ZIndex = 2
-    })
-    return label
-end
-
-function GeminiUI.AddToggle(parent, name, default, callback)
-    name = name or "Toggle"
-    default = default or false
-    
-    local frame = create("Frame", {
-        Parent = parent,
-        Size = UDim2.new(1, -20, 0, 30),
-        BackgroundTransparency = 1,
-        ZIndex = 1
-    })
-    
-    local toggleButton = create("TextButton", {
-        Parent = frame,
-        Size = UDim2.new(0, 40, 0, 20),
-        Position = UDim2.new(1, -40, 0.5, -10),
-        Text = "",
-        BackgroundColor3 = default and GeminiUI.config.accentColor or GeminiUI.config.secondaryColor,
-        BorderSizePixel = 1,
-        BorderColor3 = GeminiUI.config.borderColor,
-        ZIndex = 2
-    })
-    
-    local toggleLabel = create("TextLabel", {
-        Parent = frame,
-        Size = UDim2.new(1, -50, 1, 0),
-        Text = name,
-        Font = GeminiUI.config.font,
-        TextColor3 = GeminiUI.config.textColor,
-        TextSize = 12,
-        BackgroundTransparency = 1,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        ZIndex = 2
-    })
-    
-    -- Toggle indicator
-    local toggleIndicator = create("Frame", {
-        Parent = toggleButton,
-        Size = UDim2.new(0, 16, 0, 16),
-        Position = default and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8),
-        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-        BorderSizePixel = 0,
-        ZIndex = 3
-    })
-    
-    create("UICorner", {Parent = toggleIndicator, CornerRadius = UDim.new(1, 0)})
-    create("UICorner", {Parent = toggleButton, CornerRadius = UDim.new(0, 10)})
-    
-    local value = default
-    toggleButton.MouseButton1Click:Connect(function()
-        value = not value
-        local color = value and GeminiUI.config.accentColor or GeminiUI.config.secondaryColor
-        local pos = value and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+    -- Tab Functions
+    function window:CreateTab(name)
+        local tab = {}
+        tab.elements = {}
+        tab.name = name
         
-        TweenService:Create(toggleButton, TweenInfo.new(0.2), {BackgroundColor3 = color}):Play()
-        TweenService:Create(toggleIndicator, TweenInfo.new(0.2), {Position = pos}):Play()
-        
-        if callback then
-            pcall(callback, value)
-        end
-    end)
-    
-    return {
-        GetValue = function() return value end,
-        SetValue = function(newValue)
-            value = newValue
-            local color = value and GeminiUI.config.accentColor or GeminiUI.config.secondaryColor
-            local pos = value and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
-            toggleButton.BackgroundColor3 = color
-            toggleIndicator.Position = pos
-        end
-    }
-end
-
-function GeminiUI.AddKeybind(parent, name, default, callback)
-    name = name or "Keybind"
-    default = default or Enum.KeyCode.F
-    
-    local frame = create("Frame", {
-        Parent = parent,
-        Size = UDim2.new(1, -20, 0, 30),
-        BackgroundTransparency = 1,
-        ZIndex = 1
-    })
-
-    local keybindLabel = create("TextLabel", {
-        Parent = frame,
-        Size = UDim2.new(1, -80, 1, 0),
-        Text = name,
-        Font = GeminiUI.config.font,
-        TextColor3 = GeminiUI.config.textColor,
-        TextSize = 12,
-        BackgroundTransparency = 1,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        ZIndex = 2
-    })
-
-    local keybindButton = create("TextButton", {
-        Parent = frame,
-        Size = UDim2.new(0, 70, 0, 25),
-        Position = UDim2.new(1, -70, 0.5, -12.5),
-        Text = string.gsub(tostring(default), "Enum.KeyCode.", ""),
-        Font = GeminiUI.config.font,
-        TextColor3 = GeminiUI.config.textColor,
-        TextSize = 11,
-        BackgroundColor3 = GeminiUI.config.secondaryColor,
-        BorderSizePixel = 1,
-        BorderColor3 = GeminiUI.config.borderColor,
-        ZIndex = 2
-    })
-    
-    create("UICorner", {Parent = keybindButton, CornerRadius = UDim.new(0, 4)})
-    
-    local isSelecting = false
-    local currentKey = default
-    
-    keybindButton.MouseButton1Click:Connect(function()
-        isSelecting = not isSelecting
-        keybindButton.Text = isSelecting and "..." or string.gsub(tostring(currentKey), "Enum.KeyCode.", "")
-        keybindButton.BorderColor3 = isSelecting and GeminiUI.config.accentColor or GeminiUI.config.borderColor
-    end)
-    
-    local connection
-    connection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if isSelecting and input.UserInputType == Enum.UserInputType.Keyboard then
-            isSelecting = false
-            currentKey = input.KeyCode
-            keybindButton.Text = string.gsub(tostring(currentKey), "Enum.KeyCode.", "")
-            keybindButton.BorderColor3 = GeminiUI.config.borderColor
-            if callback then
-                pcall(callback, currentKey)
-            end
-        elseif input.KeyCode == currentKey and not gameProcessed and callback then
-            pcall(callback, currentKey)
-        end
-    end)
-    
-    return {
-        GetValue = function() return currentKey end,
-        SetValue = function(newKey)
-            currentKey = newKey
-            keybindButton.Text = string.gsub(tostring(currentKey), "Enum.KeyCode.", "")
-        end,
-        Destroy = function() connection:Disconnect() end
-    }
-end
-
-function GeminiUI.AddSlider(parent, name, min, max, default, callback)
-    name = name or "Slider"
-    min = min or 0
-    max = max or 100
-    default = math.clamp(default or 50, min, max)
-    
-    local frame = create("Frame", {
-        Parent = parent,
-        Size = UDim2.new(1, -20, 0, 50),
-        BackgroundTransparency = 1,
-        ZIndex = 1
-    })
-    
-    local sliderLabel = create("TextLabel", {
-        Parent = frame,
-        Text = name .. ": " .. tostring(math.floor(default * 100) / 100),
-        Font = GeminiUI.config.font,
-        TextColor3 = GeminiUI.config.textColor,
-        TextSize = 12,
-        BackgroundTransparency = 1,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        Size = UDim2.new(1, 0, 0, 20),
-        ZIndex = 2
-    })
-    
-    local sliderBackground = create("Frame", {
-        Parent = frame,
-        Size = UDim2.new(1, 0, 0, 6),
-        Position = UDim2.new(0, 0, 0, 25),
-        BackgroundColor3 = GeminiUI.config.secondaryColor,
-        BorderSizePixel = 1,
-        BorderColor3 = GeminiUI.config.borderColor,
-        ZIndex = 2
-    })
-    
-    create("UICorner", {Parent = sliderBackground, CornerRadius = UDim.new(0, 3)})
-    
-    local sliderFill = create("Frame", {
-        Parent = sliderBackground,
-        BackgroundColor3 = GeminiUI.config.accentColor,
-        Size = UDim2.new((default - min) / (max - min), 0, 1, 0),
-        BorderSizePixel = 0,
-        ZIndex = 3
-    })
-    
-    create("UICorner", {Parent = sliderFill, CornerRadius = UDim.new(0, 3)})
-    
-    local sliderKnob = create("Frame", {
-        Parent = sliderBackground,
-        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-        Size = UDim2.new(0, 12, 0, 12),
-        Position = UDim2.new((default - min) / (max - min), -6, 0.5, -6),
-        BorderSizePixel = 0,
-        ZIndex = 4
-    })
-    
-    create("UICorner", {Parent = sliderKnob, CornerRadius = UDim.new(1, 0)})
-    
-    local isDragging = false
-    local currentValue = default
-    
-    local function updateSlider(input)
-        local pos = input.Position.X - sliderBackground.AbsolutePosition.X
-        local percent = math.clamp(pos / sliderBackground.AbsoluteSize.X, 0, 1)
-        currentValue = min + percent * (max - min)
-        
-        sliderFill.Size = UDim2.new(percent, 0, 1, 0)
-        sliderKnob.Position = UDim2.new(percent, -6, 0.5, -6)
-        sliderLabel.Text = name .. ": " .. tostring(math.floor(currentValue * 100) / 100)
-        
-        if callback then
-            pcall(callback, currentValue)
-        end
-    end
-    
-    sliderBackground.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            isDragging = true
-            updateSlider(input)
-        end
-    end)
-    
-    UserInputService.InputChanged:Connect(function(input)
-        if isDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-            updateSlider(input)
-        end
-    end)
-    
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            isDragging = false
-        end
-    end)
-    
-    return {
-        GetValue = function() return currentValue end,
-        SetValue = function(newValue)
-            currentValue = math.clamp(newValue, min, max)
-            local percent = (currentValue - min) / (max - min)
-            sliderFill.Size = UDim2.new(percent, 0, 1, 0)
-            sliderKnob.Position = UDim2.new(percent, -6, 0.5, -6)
-            sliderLabel.Text = name .. ": " .. tostring(math.floor(currentValue * 100) / 100)
-        end
-    }
-end
-
-function GeminiUI.AddColorPicker(parent, name, default, callback)
-    name = name or "Color"
-    default = default or Color3.fromRGB(255, 255, 255)
-    
-    local frame = create("Frame", {
-        Parent = parent,
-        Size = UDim2.new(1, -20, 0, 30),
-        BackgroundTransparency = 1,
-        ZIndex = 1
-    })
-
-    local colorLabel = create("TextLabel", {
-        Parent = frame,
-        Text = name,
-        Font = GeminiUI.config.font,
-        TextColor3 = GeminiUI.config.textColor,
-        TextSize = 12,
-        BackgroundTransparency = 1,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        Size = UDim2.new(1, -35, 1, 0),
-        ZIndex = 2
-    })
-
-    local colorDisplay = create("TextButton", {
-        Parent = frame,
-        Size = UDim2.new(0, 25, 0, 25),
-        Position = UDim2.new(1, -25, 0.5, -12.5),
-        BackgroundColor3 = default,
-        BorderSizePixel = 2,
-        BorderColor3 = Color3.fromRGB(255, 255, 255),
-        Text = "",
-        ZIndex = 2
-    })
-    
-    create("UICorner", {Parent = colorDisplay, CornerRadius = UDim.new(0, 4)})
-
-    local colorPickerFrame = create("Frame", {
-        Parent = GeminiUI.screenGui,
-        Size = UDim2.new(0, 200, 0, 250),
-        Position = UDim2.new(0.5, -100, 0.5, -125),
-        BackgroundColor3 = GeminiUI.config.backgroundColor,
-        BorderSizePixel = 2,
-        BorderColor3 = GeminiUI.config.accentColor,
-        Visible = false,
-        ZIndex = 10
-    })
-    
-    create("UICorner", {Parent = colorPickerFrame, CornerRadius = UDim.new(0, 8)})
-
-    -- Color gradient background
-    local colorGradient = create("Frame", {
-        Parent = colorPickerFrame,
-        Size = UDim2.new(1, -20, 0, 150),
-        Position = UDim2.new(0, 10, 0, 10),
-        BackgroundColor3 = Color3.fromRGB(255, 0, 0),
-        BorderSizePixel = 1,
-        BorderColor3 = GeminiUI.config.borderColor,
-        ZIndex = 11
-    })
-    
-    -- Hue slider
-    local hueSlider = create("Frame", {
-        Parent = colorPickerFrame,
-        Size = UDim2.new(1, -20, 0, 20),
-        Position = UDim2.new(0, 10, 0, 170),
-        BackgroundColor3 = Color3.fromRGB(255, 0, 0),
-        BorderSizePixel = 1,
-        BorderColor3 = GeminiUI.config.borderColor,
-        ZIndex = 11
-    })
-    
-    -- Create rainbow gradient for hue slider
-    local hueGradient = create("UIGradient", {
-        Parent = hueSlider,
-        Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 0, 0)),
-            ColorSequenceKeypoint.new(0.17, Color3.fromRGB(255, 255, 0)),
-            ColorSequenceKeypoint.new(0.33, Color3.fromRGB(0, 255, 0)),
-            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(0, 255, 255)),
-            ColorSequenceKeypoint.new(0.67, Color3.fromRGB(0, 0, 255)),
-            ColorSequenceKeypoint.new(0.83, Color3.fromRGB(255, 0, 255)),
-            ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 0, 0))
-        })
-    })
-    
-    -- Confirm button
-    local confirmButton = create("TextButton", {
-        Parent = colorPickerFrame,
-        Size = UDim2.new(1, -20, 0, 30),
-        Position = UDim2.new(0, 10, 0, 200),
-        Text = "Confirm",
-        Font = GeminiUI.config.font,
-        TextColor3 = GeminiUI.config.textColor,
-        TextSize = 12,
-        BackgroundColor3 = GeminiUI.config.accentColor,
-        BorderSizePixel = 0,
-        ZIndex = 11
-    })
-    
-    create("UICorner", {Parent = confirmButton, CornerRadius = UDim.new(0, 4)})
-    
-    local currentColor = default
-    local currentHue = 0
-    local isDraggingHue = false
-    local isDraggingColor = false
-    
-    -- Color picker functionality
-    local function updateColorFromHue(h)
-        currentHue = h
-        local newColor = HSVtoRGB(h, 1, 1)
-        colorGradient.BackgroundColor3 = newColor
-    end
-    
-    local function updateColorPicker(input)
-        local pos = input.Position
-        local relativePos = Vector2.new(
-            pos.X - colorGradient.AbsolutePosition.X,
-            pos.Y - colorGradient.AbsolutePosition.Y
-        )
-        local s = math.clamp(relativePos.X / colorGradient.AbsoluteSize.X, 0, 1)
-        local v = math.clamp(1 - (relativePos.Y / colorGradient.AbsoluteSize.Y), 0, 1)
-        
-        currentColor = HSVtoRGB(currentHue, s, v)
-        colorDisplay.BackgroundColor3 = currentColor
-    end
-    
-    local function updateHueSlider(input)
-        local pos = input.Position.X - hueSlider.AbsolutePosition.X
-        local percent = math.clamp(pos / hueSlider.AbsoluteSize.X, 0, 1)
-        updateColorFromHue(percent)
-    end
-    
-    colorDisplay.MouseButton1Click:Connect(function()
-        colorPickerFrame.Visible = not colorPickerFrame.Visible
-    end)
-    
-    hueSlider.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            isDraggingHue = true
-            updateHueSlider(input)
-        end
-    end)
-    
-    colorGradient.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            isDraggingColor = true
-            updateColorPicker(input)
-        end
-    end)
-    
-    UserInputService.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement then
-            if isDraggingHue then
-                updateHueSlider(input)
-            elseif isDraggingColor then
-                updateColorPicker(input)
-            end
-        end
-    end)
-    
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            isDraggingHue = false
-            isDraggingColor = false
-        end
-    end)
-    
-    confirmButton.MouseButton1Click:Connect(function()
-        colorPickerFrame.Visible = false
-        if callback then
-            pcall(callback, currentColor)
-        end
-    end)
-    
-    return {
-        GetValue = function() return currentColor end,
-        SetValue = function(newColor)
-            currentColor = newColor
-            colorDisplay.BackgroundColor3 = newColor
-        end
-    }
-end
-
-function GeminiUI.AddDropdown(parent, name, options, default, callback)
-    name = name or "Dropdown"
-    options = options or {"Option 1", "Option 2"}
-    default = default or options[1]
-    
-    local frame = create("Frame", {
-        Parent = parent,
-        Size = UDim2.new(1, -20, 0, 30),
-        BackgroundTransparency = 1,
-        ZIndex = 1
-    })
-
-    local dropdownLabel = create("TextLabel", {
-        Parent = frame,
-        Size = UDim2.new(1, -80, 1, 0),
-        Text = name,
-        Font = GeminiUI.config.font,
-        TextColor3 = GeminiUI.config.textColor,
-        TextSize = 12,
-        BackgroundTransparency = 1,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        ZIndex = 2
-    })
-    
-    local dropdownButton = create("TextButton", {
-        Parent = frame,
-        Size = UDim2.new(0, 120, 0, 25),
-        Position = UDim2.new(1, -120, 0.5, -12.5),
-        Text = default .. " ▼",
-        Font = GeminiUI.config.font,
-        TextColor3 = GeminiUI.config.textColor,
-        TextSize = 11,
-        BackgroundColor3 = GeminiUI.config.secondaryColor,
-        BorderSizePixel = 1,
-        BorderColor3 = GeminiUI.config.borderColor,
-        TextTruncate = Enum.TextTruncate.AtEnd,
-        ZIndex = 2
-    })
-    
-    create("UICorner", {Parent = dropdownButton, CornerRadius = UDim.new(0, 4)})
-    
-    local dropdownContainer = create("Frame", {
-        Parent = GeminiUI.screenGui,
-        Size = UDim2.new(0, 120, 0, math.min(#options * 25, 150)),
-        Position = UDim2.new(0, 0, 0, 0),
-        BackgroundColor3 = GeminiUI.config.backgroundColor,
-        BorderSizePixel = 1,
-        BorderColor3 = GeminiUI.config.accentColor,
-        Visible = false,
-        ZIndex = 10
-    })
-    
-    create("UICorner", {Parent = dropdownContainer, CornerRadius = UDim.new(0, 4)})
-    
-    local scrollingFrame = create("ScrollingFrame", {
-        Parent = dropdownContainer,
-        Size = UDim2.new(1, 0, 1, 0),
-        BackgroundTransparency = 1,
-        ScrollBarThickness = 4,
-        ScrollBarImageColor3 = GeminiUI.config.accentColor,
-        BorderSizePixel = 0,
-        CanvasSize = UDim2.new(0, 0, 0, #options * 25),
-        ZIndex = 10
-    })
-    
-    local listLayout = create("UIListLayout", {
-        Parent = scrollingFrame,
-        FillDirection = Enum.FillDirection.Vertical,
-        Padding = UDim.new(0, 1)
-    })
-    
-    local currentValue = default
-    local isDropdownOpen = false
-    
-    local function updateDropdownPosition()
-        local buttonPos = dropdownButton.AbsolutePosition
-        local buttonSize = dropdownButton.AbsoluteSize
-        dropdownContainer.Position = UDim2.new(0, buttonPos.X, 0, buttonPos.Y + buttonSize.Y + 2)
-    end
-    
-    dropdownButton.MouseButton1Click:Connect(function()
-        isDropdownOpen = not isDropdownOpen
-        dropdownContainer.Visible = isDropdownOpen
-        dropdownButton.Text = (isDropdownOpen and "▲ " or "▼ ") .. currentValue
-        if isDropdownOpen then
-            updateDropdownPosition()
-        end
-    end)
-    
-    for i, optionText in ipairs(options) do
-        local optionButton = create("TextButton", {
-            Parent = scrollingFrame,
-            Size = UDim2.new(1, 0, 0, 24),
-            Text = optionText,
-            Font = GeminiUI.config.font,
+        -- Create tab button
+        local tabButton = self:create("TextButton", {
+            Parent = tabContainer,
+            BackgroundColor3 = Color3.fromRGB(30, 30, 30),
+            BorderColor3 = Color3.fromRGB(60, 60, 60),
+            BorderSizePixel = 1,
+            Font = library.font,
             TextColor3 = Color3.fromRGB(200, 200, 200),
-            TextSize = 11,
-            BackgroundColor3 = Color3.fromRGB(0, 0, 0, 0),
-            BackgroundTransparency = 1,
-            TextTruncate = Enum.TextTruncate.AtEnd,
-            ZIndex = 11
+            Text = name,
+            TextSize = 12,
+            Size = UDim2.new(0, 100, 1, 0),
+            Position = UDim2.new(0, 0, 0, 0)
         })
         
-        optionButton.MouseEnter:Connect(function()
-            optionButton.BackgroundTransparency = 0
-            optionButton.BackgroundColor3 = GeminiUI.config.accentColor
-            optionButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        end)
+        -- Create tab content
+        local tabContent = self:create("ScrollingFrame", {
+            Parent = contentFrame,
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0,
+            Size = UDim2.new(1, 0, 1, 0),
+            Position = UDim2.new(0, 0, 0, 0),
+            CanvasSize = UDim2.new(0, 0, 0, 0),
+            ScrollBarThickness = 6,
+            ScrollBarImageColor3 = themes.preset.accent,
+            Visible = false
+        })
         
-        optionButton.MouseLeave:Connect(function()
-            optionButton.BackgroundTransparency = 1
-            optionButton.TextColor3 = Color3.fromRGB(200, 200, 200)
-        end)
-        
-        optionButton.MouseButton1Click:Connect(function()
-            currentValue = optionText
-            dropdownButton.Text = "▼ " .. optionText
-            dropdownContainer.Visible = false
-            isDropdownOpen = false
-            if callback then
-                pcall(callback, currentValue)
+        -- Auto-resize canvas
+        local function updateCanvasSize()
+            local contentSize = 0
+            for _, child in pairs(tabContent:GetChildren()) do
+                if child:IsA("GuiObject") and child.Visible then
+                    contentSize = math.max(contentSize, child.Position.Y.Offset + child.Size.Y.Offset)
+                end
             end
-        end)
-    end
-    
-    -- Close dropdown when clicking outside
-    UserInputService.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 and isDropdownOpen then
-            local mousePos = UserInputService:GetMouseLocation()
-            local containerPos = dropdownContainer.AbsolutePosition
-            local containerSize = dropdownContainer.AbsoluteSize
-            local buttonPos = dropdownButton.AbsolutePosition
-            local buttonSize = dropdownButton.AbsoluteSize
-            
-            local inContainer = mousePos.X >= containerPos.X and mousePos.X <= containerPos.X + containerSize.X and
-                               mousePos.Y >= containerPos.Y and mousePos.Y <= containerPos.Y + containerSize.Y
-                               
-            local inButton = mousePos.X >= buttonPos.X and mousePos.X <= buttonPos.X + buttonSize.X and
-                            mousePos.Y >= buttonPos.Y and mousePos.Y <= buttonPos.Y + buttonSize.Y
-            
-            if not inContainer and not inButton then
-                dropdownContainer.Visible = false
-                isDropdownOpen = false
-                dropdownButton.Text = "▼ " .. currentValue
-            end
+            tabContent.CanvasSize = UDim2.new(0, 0, 0, contentSize + 20)
         end
-    end)
-    
-    return {
-        GetValue = function() return currentValue end,
-        SetValue = function(newValue)
-            if table.find(options, newValue) then
-                currentValue = newValue
-                dropdownButton.Text = "▼ " .. newValue
+        
+        -- Tab button click
+        tabButton.MouseButton1Click:Connect(function()
+            -- Hide all tabs
+            for _, tabData in pairs(window.tabs) do
+                tabData.content.Visible = false
+                tabData.button.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+                tabData.button.TextColor3 = Color3.fromRGB(200, 200, 200)
             end
-        end,
-        AddOption = function(option)
-            table.insert(options, option)
-            -- Recreate options (simple approach)
-            scrollingFrame:ClearAllChildren()
-            create("UIListLayout", {
-                Parent = scrollingFrame,
-                FillDirection = Enum.FillDirection.Vertical,
-                Padding = UDim.new(0, 1)
+            
+            -- Show this tab
+            tabContent.Visible = true
+            tabButton.BackgroundColor3 = themes.preset.accent
+            tabButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            window.currentTab = tab
+            updateCanvasSize()
+        end)
+        
+        tab.content = tabContent
+        tab.button = tabButton
+        tab.updateCanvas = updateCanvasSize
+        
+        -- Store tab
+        table.insert(window.tabs, tab)
+        
+        -- Position tabs evenly
+        local tabCount = #window.tabs
+        local tabWidth = (tabContainer.AbsoluteSize.X - 4) / tabCount
+        for i, tabData in pairs(window.tabs) do
+            tabData.button.Size = UDim2.new(0, tabWidth, 1, 0)
+            tabData.button.Position = UDim2.new(0, (i-1) * tabWidth + 2, 0, 0)
+        end
+        
+        -- Make first tab active
+        if tabCount == 1 then
+            tabButton.BackgroundColor3 = themes.preset.accent
+            tabButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+            tabContent.Visible = true
+            window.currentTab = tab
+        end
+        
+        local yOffset = 10
+        
+        -- Element creation functions
+        function tab:CreateButton(text, callback)
+            local button = library:create("TextButton", {
+                Parent = tabContent,
+                BackgroundColor3 = Color3.fromRGB(40, 40, 40),
+                BorderColor3 = Color3.fromRGB(60, 60, 60),
+                BorderSizePixel = 1,
+                Font = library.font,
+                TextColor3 = Color3.fromRGB(255, 255, 255),
+                Text = text,
+                TextSize = 13,
+                Size = UDim2.new(1, -20, 0, 30),
+                Position = UDim2.new(0, 10, 0, yOffset)
             })
-            for i, opt in ipairs(options) do
-                local optBtn = create("TextButton", {
-                    Parent = scrollingFrame,
-                    Size = UDim2.new(1, 0, 0, 24),
-                    Text = opt,
-                    Font = GeminiUI.config.font,
-                    TextColor3 = Color3.fromRGB(200, 200, 200),
+            
+            button.MouseButton1Click:Connect(function()
+                library:tween(button, {BackgroundColor3 = themes.preset.accent}, 0.1)
+                wait(0.1)
+                library:tween(button, {BackgroundColor3 = Color3.fromRGB(40, 40, 40)}, 0.1)
+                if callback then callback() end
+            end)
+            
+            yOffset = yOffset + 40
+            self.updateCanvas()
+            return button
+        end
+        
+        function tab:CreateToggle(text, default, callback)
+            local toggleFrame = library:create("Frame", {
+                Parent = tabContent,
+                BackgroundTransparency = 1,
+                Size = UDim2.new(1, -20, 0, 30),
+                Position = UDim2.new(0, 10, 0, yOffset)
+            })
+            
+            local toggleLabel = library:create("TextLabel", {
+                Parent = toggleFrame,
+                BackgroundTransparency = 1,
+                Font = library.font,
+                TextColor3 = Color3.fromRGB(255, 255, 255),
+                Text = text,
+                TextSize = 13,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                Size = UDim2.new(1, -40, 1, 0),
+                Position = UDim2.new(0, 0, 0, 0)
+            })
+            
+            local toggleButton = library:create("TextButton", {
+                Parent = toggleFrame,
+                BackgroundColor3 = default and themes.preset.accent or Color3.fromRGB(60, 60, 60),
+                BorderColor3 = Color3.fromRGB(80, 80, 80),
+                BorderSizePixel = 1,
+                Size = UDim2.new(0, 30, 0, 20),
+                Position = UDim2.new(1, -35, 0, 5),
+                Text = ""
+            })
+            
+            local toggleState = default or false
+            
+            toggleButton.MouseButton1Click:Connect(function()
+                toggleState = not toggleState
+                library:tween(toggleButton, {
+                    BackgroundColor3 = toggleState and themes.preset.accent or Color3.fromRGB(60, 60, 60)
+                })
+                if callback then callback(toggleState) end
+            end)
+            
+            yOffset = yOffset + 40
+            self.updateCanvas()
+            return toggleButton, function() return toggleState end
+        end
+        
+        function tab:CreateSlider(text, min, max, default, callback)
+            local sliderFrame = library:create("Frame", {
+                Parent = tabContent,
+                BackgroundTransparency = 1,
+                Size = UDim2.new(1, -20, 0, 50),
+                Position = UDim2.new(0, 10, 0, yOffset)
+            })
+            
+            local sliderLabel = library:create("TextLabel", {
+                Parent = sliderFrame,
+                BackgroundTransparency = 1,
+                Font = library.font,
+                TextColor3 = Color3.fromRGB(255, 255, 255),
+                Text = text .. ": " .. tostring(default or min),
+                TextSize = 13,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                Size = UDim2.new(1, 0, 0, 20),
+                Position = UDim2.new(0, 0, 0, 0)
+            })
+            
+            local sliderBack = library:create("Frame", {
+                Parent = sliderFrame,
+                BackgroundColor3 = Color3.fromRGB(40, 40, 40),
+                BorderColor3 = Color3.fromRGB(60, 60, 60),
+                BorderSizePixel = 1,
+                Size = UDim2.new(1, 0, 0, 20),
+                Position = UDim2.new(0, 0, 0, 25)
+            })
+            
+            local sliderFill = library:create("Frame", {
+                Parent = sliderBack,
+                BackgroundColor3 = themes.preset.accent,
+                BorderSizePixel = 0,
+                Size = UDim2.new((default or min) / max, 0, 1, 0),
+                Position = UDim2.new(0, 0, 0, 0)
+            })
+            
+            local currentValue = default or min
+            local dragging = false
+            
+            local function updateSlider(input)
+                local mousePos = input.Position.X
+                local sliderPos = sliderBack.AbsolutePosition.X
+                local sliderSize = sliderBack.AbsoluteSize.X
+                local percent = math.clamp((mousePos - sliderPos) / sliderSize, 0, 1)
+                currentValue = math.floor(min + (max - min) * percent)
+                
+                sliderFill.Size = UDim2.new(percent, 0, 1, 0)
+                sliderLabel.Text = text .. ": " .. tostring(currentValue)
+                
+                if callback then callback(currentValue) end
+            end
+            
+            sliderBack.InputBegan:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                    dragging = true
+                    updateSlider(input)
+                end
+            end)
+            
+            UserInputService.InputChanged:Connect(function(input)
+                if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+                    updateSlider(input)
+                end
+            end)
+            
+            UserInputService.InputEnded:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                    dragging = false
+                end
+            end)
+            
+            yOffset = yOffset + 60
+            self.updateCanvas()
+            return sliderFill, function() return currentValue end
+        end
+        
+        function tab:CreateDropdown(text, options, callback)
+            local dropdownFrame = library:create("Frame", {
+                Parent = tabContent,
+                BackgroundTransparency = 1,
+                Size = UDim2.new(1, -20, 0, 30),
+                Position = UDim2.new(0, 10, 0, yOffset)
+            })
+            
+            local dropdownLabel = library:create("TextLabel", {
+                Parent = dropdownFrame,
+                BackgroundTransparency = 1,
+                Font = library.font,
+                TextColor3 = Color3.fromRGB(255, 255, 255),
+                Text = text,
+                TextSize = 13,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                Size = UDim2.new(0.5, 0, 1, 0),
+                Position = UDim2.new(0, 0, 0, 0)
+            })
+            
+            local dropdownButton = library:create("TextButton", {
+                Parent = dropdownFrame,
+                BackgroundColor3 = Color3.fromRGB(40, 40, 40),
+                BorderColor3 = Color3.fromRGB(60, 60, 60),
+                BorderSizePixel = 1,
+                Font = library.font,
+                TextColor3 = Color3.fromRGB(255, 255, 255),
+                Text = options[1] or "Select",
+                TextSize = 12,
+                Size = UDim2.new(0.5, -10, 1, 0),
+                Position = UDim2.new(0.5, 0, 0, 0)
+            })
+            
+            local dropdownOpen = false
+            local optionsFrame = library:create("Frame", {
+                Parent = dropdownFrame,
+                BackgroundColor3 = Color3.fromRGB(30, 30, 30),
+                BorderColor3 = Color3.fromRGB(60, 60, 60),
+                BorderSizePixel = 1,
+                Size = UDim2.new(0.5, -10, 0, #options * 25),
+                Position = UDim2.new(0.5, 0, 1, 5),
+                Visible = false,
+                ZIndex = 10
+            })
+            
+            for i, option in ipairs(options) do
+                local optionButton = library:create("TextButton", {
+                    Parent = optionsFrame,
+                    BackgroundColor3 = Color3.fromRGB(35, 35, 35),
+                    BorderSizePixel = 0,
+                    Font = library.font,
+                    TextColor3 = Color3.fromRGB(255, 255, 255),
+                    Text = option,
                     TextSize = 11,
-                    BackgroundTransparency = 1,
+                    Size = UDim2.new(1, 0, 0, 25),
+                    Position = UDim2.new(0, 0, 0, (i-1) * 25),
                     ZIndex = 11
                 })
-                optBtn.MouseButton1Click:Connect(function()
-                    currentValue = opt
-                    dropdownButton.Text = "▼ " .. opt
-                    dropdownContainer.Visible = false
-                    isDropdownOpen = false
-                    if callback then pcall(callback, currentValue) end
+                
+                optionButton.MouseButton1Click:Connect(function()
+                    dropdownButton.Text = option
+                    optionsFrame.Visible = false
+                    dropdownOpen = false
+                    if callback then callback(option, i) end
+                end)
+                
+                optionButton.MouseEnter:Connect(function()
+                    optionButton.BackgroundColor3 = themes.preset.accent
+                end)
+                
+                optionButton.MouseLeave:Connect(function()
+                    optionButton.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
                 end)
             end
-            scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, #options * 25)
+            
+            dropdownButton.MouseButton1Click:Connect(function()
+                dropdownOpen = not dropdownOpen
+                optionsFrame.Visible = dropdownOpen
+            end)
+            
+            yOffset = yOffset + 40
+            self.updateCanvas()
+            return dropdownButton
         end
-    }
-end
-
-function GeminiUI.AddTextBox(parent, name, default, callback)
-    name = name or "TextBox"
-    default = default or ""
-    
-    local frame = create("Frame", {
-        Parent = parent,
-        Size = UDim2.new(1, -20, 0, 30),
-        BackgroundTransparency = 1,
-        ZIndex = 1
-    })
-    
-    local textBoxLabel = create("TextLabel", {
-        Parent = frame,
-        Size = UDim2.new(1, -130, 1, 0),
-        Text = name,
-        Font = GeminiUI.config.font,
-        TextColor3 = GeminiUI.config.textColor,
-        TextSize = 12,
-        BackgroundTransparency = 1,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        ZIndex = 2
-    })
-    
-    local textBox = create("TextBox", {
-        Parent = frame,
-        Size = UDim2.new(0, 120, 0, 25),
-        Position = UDim2.new(1, -120, 0.5, -12.5),
-        Text = default,
-        Font = GeminiUI.config.font,
-        TextColor3 = GeminiUI.config.textColor,
-        TextSize = 11,
-        BackgroundColor3 = GeminiUI.config.secondaryColor,
-        BorderSizePixel = 1,
-        BorderColor3 = GeminiUI.config.borderColor,
-        PlaceholderText = name,
-        PlaceholderColor3 = Color3.fromRGB(150, 150, 150),
-        TextTruncate = Enum.TextTruncate.AtEnd,
-        ZIndex = 2
-    })
-    
-    create("UICorner", {Parent = textBox, CornerRadius = UDim.new(0, 4)})
-
-    textBox.Focused:Connect(function()
-        textBox.BorderColor3 = GeminiUI.config.accentColor
-    end)
-    
-    textBox.FocusLost:Connect(function(enterPressed)
-        textBox.BorderColor3 = GeminiUI.config.borderColor
-        if enterPressed or textBox.Text ~= default then
-            if callback then
-                pcall(callback, textBox.Text)
-            end
-        end
-    end)
-
-    return {
-        GetValue = function() return textBox.Text end,
-        SetValue = function(newText)
-            textBox.Text = tostring(newText)
-        end,
-        GetTextBox = function() return textBox end
-    }
-end
-
-function GeminiUI.AddButton(parent, name, callback)
-    name = name or "Button"
-    
-    local button = create("TextButton", {
-        Parent = parent,
-        Size = UDim2.new(1, -20, 0, 30),
-        Text = name,
-        Font = GeminiUI.config.font,
-        TextColor3 = GeminiUI.config.textColor,
-        TextSize = 12,
-        BackgroundColor3 = GeminiUI.config.accentColor,
-        BorderSizePixel = 0,
-        ZIndex = 2
-    })
-    
-    create("UICorner", {Parent = button, CornerRadius = UDim.new(0, 6)})
-    
-    -- Hover effects
-    button.MouseEnter:Connect(function()
-        TweenService:Create(button, TweenInfo.new(0.2), {
-            BackgroundColor3 = Color3.fromRGB(
-                math.min(255, GeminiUI.config.accentColor.R * 255 + 20),
-                math.min(255, GeminiUI.config.accentColor.G * 255 + 20),
-                math.min(255, GeminiUI.config.accentColor.B * 255 + 20)
-            )
-        }):Play()
-    end)
-    
-    button.MouseLeave:Connect(function()
-        TweenService:Create(button, TweenInfo.new(0.2), {
-            BackgroundColor3 = GeminiUI.config.accentColor
-        }):Play()
-    end)
-    
-    button.MouseButton1Click:Connect(function()
-        -- Click animation
-        TweenService:Create(button, TweenInfo.new(0.1), {Size = UDim2.new(1, -22, 0, 28)}):Play()
-        wait(0.1)
-        TweenService:Create(button, TweenInfo.new(0.1), {Size = UDim2.new(1, -20, 0, 30)}):Play()
         
-        if callback then
-            pcall(callback)
+        function tab:CreateTextbox(text, placeholder, callback)
+            local textboxFrame = library:create("Frame", {
+                Parent = tabContent,
+                BackgroundTransparency = 1,
+                Size = UDim2.new(1, -20, 0, 50),
+                Position = UDim2.new(0, 10, 0, yOffset)
+            })
+            
+            local textboxLabel = library:create("TextLabel", {
+                Parent = textboxFrame,
+                BackgroundTransparency = 1,
+                Font = library.font,
+                TextColor3 = Color3.fromRGB(255, 255, 255),
+                Text = text,
+                TextSize = 13,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                Size = UDim2.new(1, 0, 0, 20),
+                Position = UDim2.new(0, 0, 0, 0)
+            })
+            
+            local textbox = library:create("TextBox", {
+                Parent = textboxFrame,
+                BackgroundColor3 = Color3.fromRGB(40, 40, 40),
+                BorderColor3 = Color3.fromRGB(60, 60, 60),
+                BorderSizePixel = 1,
+                Font = library.font,
+                TextColor3 = Color3.fromRGB(255, 255, 255),
+                PlaceholderText = placeholder or "",
+                PlaceholderColor3 = Color3.fromRGB(150, 150, 150),
+                Text = "",
+                TextSize = 12,
+                Size = UDim2.new(1, 0, 0, 25),
+                Position = UDim2.new(0, 0, 0, 25)
+            })
+            
+            textbox.FocusLost:Connect(function()
+                if callback then callback(textbox.Text) end
+            end)
+            
+            yOffset = yOffset + 60
+            self.updateCanvas()
+            return textbox
         end
-    end)
-    
-    return button
-end
-
-function GeminiUI.AddSeparator(parent)
-    local separator = create("Frame", {
-        Parent = parent,
-        Size = UDim2.new(1, -40, 0, 1),
-        BackgroundColor3 = GeminiUI.config.borderColor,
-        BorderSizePixel = 0,
-        ZIndex = 1
-    })
-    
-    return separator
-end
-
-function GeminiUI.AddSection(parent, name)
-    name = name or "Section"
-    
-    local sectionFrame = create("Frame", {
-        Parent = parent,
-        Size = UDim2.new(1, -20, 0, 25),
-        BackgroundTransparency = 1,
-        ZIndex = 1
-    })
-    
-    local sectionLabel = create("TextLabel", {
-        Parent = sectionFrame,
-        Text = name,
-        Font = GeminiUI.config.font,
-        TextColor3 = GeminiUI.config.accentColor,
-        TextSize = 14,
-        BackgroundTransparency = 1,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        Size = UDim2.new(1, 0, 1, 0),
-        TextScaled = false,
-        ZIndex = 2
-    })
-    
-    local underline = create("Frame", {
-        Parent = sectionFrame,
-        Size = UDim2.new(1, 0, 0, 1),
-        Position = UDim2.new(0, 0, 1, -2),
-        BackgroundColor3 = GeminiUI.config.accentColor,
-        BorderSizePixel = 0,
-        ZIndex = 1
-    })
-    
-    return sectionFrame
-end
-
--- Utility functions
-function GeminiUI.Destroy()
-    if GeminiUI.screenGui then
-        GeminiUI.screenGui:Destroy()
-        GeminiUI.screenGui = nil
-        GeminiUI.mainFrame = nil
-        GeminiUI.contentFrame = nil
-        GeminiUI.tabsContainer = nil
-        GeminiUI.tabContents = nil
-        GeminiUI.tabs = {}
-        GeminiUI.activeTab = nil
-        dragFrame = nil
+        
+        function tab:CreateKeybind(text, defaultKey, callback)
+            local keybindFrame = library:create("Frame", {
+                Parent = tabContent,
+                BackgroundTransparency = 1,
+                Size = UDim2.new(1, -20, 0, 30),
+                Position = UDim2.new(0, 10, 0, yOffset)
+            })
+            
+            local keybindLabel = library:create("TextLabel", {
+                Parent = keybindFrame,
+                BackgroundTransparency = 1,
+                Font = library.font,
+                TextColor3 = Color3.fromRGB(255, 255, 255),
+                Text = text,
+                TextSize = 13,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                Size = UDim2.new(0.7, 0, 1, 0),
+                Position = UDim2.new(0, 0, 0, 0)
+            })
+            
+            local keybindButton = library:create("TextButton", {
+                Parent = keybindFrame,
+                BackgroundColor3 = Color3.fromRGB(40, 40, 40),
+                BorderColor3 = Color3.fromRGB(60, 60, 60),
+                BorderSizePixel = 1,
+                Font = library.font,
+                TextColor3 = Color3.fromRGB(255, 255, 255),
+                Text = defaultKey and defaultKey.Name or "None",
+                TextSize = 11,
+                Size = UDim2.new(0.3, -10, 1, 0),
+                Position = UDim2.new(0.7, 0, 0, 0)
+            })
+            
+            local currentKey = defaultKey
+            local binding = false
+            
+            keybindButton.MouseButton1Click:Connect(function()
+                if binding then return end
+                binding = true
+                keybindButton.Text = "..."
+                keybindButton.BackgroundColor3 = themes.preset.accent
+                
+                local connection
+                connection = UserInputService.InputBegan:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.Keyboard then
+                        currentKey = input.KeyCode
+                        keybindButton.Text = input.KeyCode.Name
+                        keybindButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+                        binding = false
+                        connection:Disconnect()
+                        if callback then callback(currentKey) end
+                    end
+                end)
+            end)
+            
+            yOffset = yOffset + 40
+            self.updateCanvas()
+            return keybindButton, function() return currentKey end
+        end
+        
+        function tab:CreateColorPicker(text, defaultColor, callback)
+            local colorFrame = library:create("Frame", {
+                Parent = tabContent,
+                BackgroundTransparency = 1,
+                Size = UDim2.new(1, -20, 0, 30),
+                Position = UDim2.new(0, 10, 0, yOffset)
+            })
+            
+            local colorLabel = library:create("TextLabel", {
+                Parent = colorFrame,
+                BackgroundTransparency = 1,
+                Font = library.font,
+                TextColor3 = Color3.fromRGB(255, 255, 255),
+                Text = text,
+                TextSize = 13,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                Size = UDim2.new(0.8, 0, 1, 0),
+                Position = UDim2.new(0, 0, 0, 0)
+            })
+            
+            local colorPreview = library:create("TextButton", {
+                Parent = colorFrame,
+                BackgroundColor3 = defaultColor or Color3.fromRGB(255, 255, 255),
+                BorderColor3 = Color3.fromRGB(60, 60, 60),
+                BorderSizePixel = 1,
+                Size = UDim2.new(0, 40, 0, 20),
+                Position = UDim2.new(1, -45, 0, 5),
+                Text = ""
+            })
+            
+            local currentColor = defaultColor or Color3.fromRGB(255, 255, 255)
+            local pickerOpen = false
+            
+            -- Simple color picker (RGB sliders)
+            local pickerFrame = library:create("Frame", {
+                Parent = colorFrame,
+                BackgroundColor3 = Color3.fromRGB(30, 30, 30),
+                BorderColor3 = Color3.fromRGB(60, 60, 60),
+                BorderSizePixel = 1,
+                Size = UDim2.new(1, 0, 0, 120),
+                Position = UDim2.new(0, 0, 1, 5),
+                Visible = false,
+                ZIndex = 15
+            })
+            
+            local r, g, b = math.floor(currentColor.R * 255), math.floor(currentColor.G * 255), math.floor(currentColor.B * 255)
+            
+            -- RGB Sliders
+            local function createColorSlider(name, value, yPos, colorIndex)
+                local sliderLabel = library:create("TextLabel", {
+                    Parent = pickerFrame,
+                    BackgroundTransparency = 1,
+                    Font = library.font,
+                    TextColor3 = Color3.fromRGB(255, 255, 255),
+                    Text = name .. ": " .. value,
+                    TextSize = 11,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    Size = UDim2.new(1, -10, 0, 15),
+                    Position = UDim2.new(0, 5, 0, yPos),
+                    ZIndex = 16
+                })
+                
+                local sliderBack = library:create("Frame", {
+                    Parent = pickerFrame,
+                    BackgroundColor3 = Color3.fromRGB(40, 40, 40),
+                    BorderSizePixel = 0,
+                    Size = UDim2.new(1, -10, 0, 15),
+                    Position = UDim2.new(0, 5, 0, yPos + 15),
+                    ZIndex = 16
+                })
+                
+                local sliderFill = library:create("Frame", {
+                    Parent = sliderBack,
+                    BackgroundColor3 = colorIndex == 1 and Color3.fromRGB(255, 0, 0) or 
+                                       colorIndex == 2 and Color3.fromRGB(0, 255, 0) or 
+                                       Color3.fromRGB(0, 0, 255),
+                    BorderSizePixel = 0,
+                    Size = UDim2.new(value / 255, 0, 1, 0),
+                    Position = UDim2.new(0, 0, 0, 0),
+                    ZIndex = 17
+                })
+                
+                local currentVal = value
+                local dragging = false
+                
+                local function updateSlider(input)
+                    local mousePos = input.Position.X
+                    local sliderPos = sliderBack.AbsolutePosition.X
+                    local sliderSize = sliderBack.AbsoluteSize.X
+                    local percent = math.clamp((mousePos - sliderPos) / sliderSize, 0, 1)
+                    currentVal = math.floor(255 * percent)
+                    
+                    sliderFill.Size = UDim2.new(percent, 0, 1, 0)
+                    sliderLabel.Text = name .. ": " .. currentVal
+                    
+                    if colorIndex == 1 then r = currentVal
+                    elseif colorIndex == 2 then g = currentVal
+                    else b = currentVal end
+                    
+                    currentColor = Color3.fromRGB(r, g, b)
+                    colorPreview.BackgroundColor3 = currentColor
+                    if callback then callback(currentColor) end
+                end
+                
+                sliderBack.InputBegan:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                        dragging = true
+                        updateSlider(input)
+                    end
+                end)
+                
+                UserInputService.InputChanged:Connect(function(input)
+                    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+                        updateSlider(input)
+                    end
+                end)
+                
+                UserInputService.InputEnded:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                        dragging = false
+                    end
+                end)
+                
+                return currentVal
+            end
+            
+            createColorSlider("R", r, 5, 1)
+            createColorSlider("G", g, 35, 2)
+            createColorSlider("B", b, 65, 3)
+            
+            -- Close button
+            local closeButton = library:create("TextButton", {
+                Parent = pickerFrame,
+                BackgroundColor3 = Color3.fromRGB(60, 60, 60),
+                BorderColor3 = Color3.fromRGB(80, 80, 80),
+                BorderSizePixel = 1,
+                Font = library.font,
+                TextColor3 = Color3.fromRGB(255, 255, 255),
+                Text = "Close",
+                TextSize = 11,
+                Size = UDim2.new(0, 60, 0, 20),
+                Position = UDim2.new(1, -65, 1, -25),
+                ZIndex = 16
+            })
+            
+            closeButton.MouseButton1Click:Connect(function()
+                pickerFrame.Visible = false
+                pickerOpen = false
+            end)
+            
+            colorPreview.MouseButton1Click:Connect(function()
+                pickerOpen = not pickerOpen
+                pickerFrame.Visible = pickerOpen
+            end)
+            
+            yOffset = yOffset + 40
+            self.updateCanvas()
+            return colorPreview, function() return currentColor end
+        end
+        
+        function tab:CreateLabel(text)
+            local label = library:create("TextLabel", {
+                Parent = tabContent,
+                BackgroundTransparency = 1,
+                Font = library.font,
+                TextColor3 = Color3.fromRGB(255, 255, 255),
+                Text = text,
+                TextSize = 13,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                TextYAlignment = Enum.TextYAlignment.Top,
+                Size = UDim2.new(1, -20, 0, 20),
+                Position = UDim2.new(0, 10, 0, yOffset),
+                TextWrapped = true
+            })
+            
+            yOffset = yOffset + 30
+            self.updateCanvas()
+            return label
+        end
+        
+        function tab:CreateSeparator()
+            local separator = library:create("Frame", {
+                Parent = tabContent,
+                BackgroundColor3 = Color3.fromRGB(60, 60, 60),
+                BorderSizePixel = 0,
+                Size = UDim2.new(1, -20, 0, 1),
+                Position = UDim2.new(0, 10, 0, yOffset + 10)
+            })
+            
+            yOffset = yOffset + 30
+            self.updateCanvas()
+            return separator
+        end
+        
+        return tab
     end
-end
-
-function GeminiUI.SetTheme(newTheme)
-    if newTheme then
-        for key, value in pairs(newTheme) do
-            if GeminiUI.config[key] then
-                GeminiUI.config[key] = value
+    
+    -- Window control functions
+    function window:Toggle()
+        screenGui.Enabled = not screenGui.Enabled
+    end
+    
+    function window:Destroy()
+        screenGui:Destroy()
+    end
+    
+    function window:SetAccentColor(color)
+        themes.preset.accent = color
+        -- Update all accent colored elements
+        for _, tab in pairs(self.tabs) do
+            if tab.button.BackgroundColor3 == guiAccentColor then
+                tab.button.BackgroundColor3 = color
             end
         end
+        borderFrame.BackgroundColor3 = color
+        outerGlow.ImageColor3 = color
     end
+    
+    return window
 end
 
-function GeminiUI.ToggleVisibility()
-    if GeminiUI.mainFrame then
-        GeminiUI.mainFrame.Visible = not GeminiUI.mainFrame.Visible
-    end
-end
-
-return GeminiUI
+-- ==================================================================================================================
+-- EXAMPLE USAGE - Demonstrates all library features
+-- ==================================================================================================================
